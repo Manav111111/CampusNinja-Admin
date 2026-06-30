@@ -301,15 +301,18 @@ export default function ProductForm({ initialData }: { initialData?: any }) {
 
           {/* Checkout Requirements Options */}
           <div className="space-y-4 md:col-span-2 bg-zinc-950/50 p-5 rounded-xl border border-zinc-800">
-            <h3 className="text-sm font-semibold text-white">Order Checkout Options</h3>
-            <label className="flex items-center gap-3 cursor-pointer">
+            <h3 className="text-sm font-semibold text-white">Order Checkout Flow Options</h3>
+            <label className="flex items-start gap-3 cursor-pointer">
               <input 
                 type="checkbox" 
                 checked={requiresFileUpload} 
                 onChange={(e) => setRequiresFileUpload(e.target.checked)}
-                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-indigo-500"
+                className="w-4 h-4 mt-0.5 rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-indigo-500"
               />
-              <span className="text-sm text-zinc-300">Require customer to upload a file/assignment during checkout</span>
+              <div>
+                <span className="text-sm font-medium text-zinc-200 block">Require Product Images / File Upload</span>
+                <span className="text-xs text-zinc-400">When enabled: Automatically shows the Guidelines page before checkout and requires mandatory image/file upload. When disabled: Skips guidelines & upload, using standard checkout flow.</span>
+              </div>
             </label>
 
             {requiresFileUpload && (

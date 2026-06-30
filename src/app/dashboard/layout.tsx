@@ -12,7 +12,8 @@ import {
   FolderOpen,
   ShoppingCart,
   Layout,
-  Bell
+  Bell,
+  Truck
 } from 'lucide-react'
 
 export default async function DashboardLayout({
@@ -64,7 +65,7 @@ export default async function DashboardLayout({
           </Link>
           <Link href="/dashboard/resources" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
             <FolderOpen size={18} />
-            Resources
+            Subject Resources
           </Link>
 
           <div className="pt-4 pb-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider px-3">
@@ -84,7 +85,11 @@ export default async function DashboardLayout({
           </div>
           <Link href="/dashboard/skills" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
             <Briefcase size={18} />
-            Skills
+            Skill Paths
+          </Link>
+          <Link href="/dashboard/skill-resources" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
+            <FolderOpen size={18} />
+            Skill Resources
           </Link>
 
           <div className="pt-4 pb-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider px-3">
@@ -97,6 +102,10 @@ export default async function DashboardLayout({
           <Link href="/dashboard/orders" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
             <Users size={18} />
             Orders
+          </Link>
+          <Link href="/dashboard/delivery-settings" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
+            <Truck size={18} />
+            Delivery Settings
           </Link>
           
           <div className="pt-4 pb-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider px-3">

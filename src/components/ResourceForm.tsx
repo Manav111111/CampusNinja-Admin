@@ -3,8 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Save, UploadCloud } from 'lucide-react'
+import { ArrowLeft, Save, UploadCloud, FileText, CheckCircle2, Video, HardDrive, ExternalLink, X } from 'lucide-react'
 import { createResource, updateResource } from '@/app/dashboard/resources/actions'
+
+function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
 
 export default function ResourceForm({ 
   initialData, 
@@ -20,23 +27,24 @@ export default function ResourceForm({
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [storageType, setStorageType] = useState(initialData?.storage_type || 'supabase_file')
+  const [selectedSubjectId, setSelectedSubjectId] = useState(initialData?.subject_id || '')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [youtubeUrl, setYoutubeUrl] = useState(initialData?.youtube_url || '')
 
-  // Find initial branch and semester based on initial subject
-  const initialSubject = subjects.find(s => s.id === initialData?.subject_id)
-  const initialSemesterId = initialSubject?.semester_id || ''
-  const initialBranchId = initialSubject?.branch_id || ''
-
-  const [selectedBranch, setSelectedBranch] = useState(initialBranchId)
-  const [selectedSemester, setSelectedSemester] = useState(initialSemesterId)
-
-  const filteredSemesters = semesters.filter(s => s.branch_id === selectedBranch)
-  const filteredSubjects = subjects.filter(s => s.semester_id === selectedSemester)
+  const selectedSubject = subjects.find(s => s.id === selectedSubjectId)
+  const youtubeVideoId = extractYouTubeId(youtubeUrl)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsPending(true)
     setError(null)
     
+    if (storageType === 'supabase_file' && !initialData?.file_url && !selectedFile) {
+      setError('Please select a file (PDF, DOCX, ZIP) to upload.')
+      setIsPending(false)
+      return
+    }
+
     const formData = new FormData(e.currentTarget)
     
     let result
@@ -62,84 +70,76 @@ export default function ResourceForm({
         >
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-3xl font-bold tracking-tight text-white">
-          {initialData ? 'Edit Resource' : 'Upload Resource'}
-        </h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            {initialData ? 'Edit Resource' : 'Upload Academic Resource'}
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            Fill in the details below to publish study materials instantly to students.
+          </p>
+        </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-950/50 border border-red-900/50 text-red-400 rounded-xl text-sm font-medium">
-          {error}
+        <div className="p-4 bg-red-950/80 border border-red-900 text-red-300 rounded-xl text-sm font-medium flex items-center justify-between">
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-white"><X size={16} /></button>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="bg-zinc-900/50 border border-zinc-800/50 rounded-2xl p-6 md:p-8 space-y-6 backdrop-blur-xl">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Title <span className="text-red-400">*</span></label>
+        {initialData && (
+          <>
+            <input type="hidden" name="existing_file_url" value={initialData.file_url || ''} />
+            <input type="hidden" name="existing_file_size" value={initialData.file_size || ''} />
+            <input type="hidden" name="existing_file_format" value={initialData.file_format || ''} />
+          </>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium text-zinc-300">Resource Title <span className="text-red-400">*</span></label>
             <input 
               name="title" 
               defaultValue={initialData?.title} 
               required 
+              placeholder="e.g., Module 1 Complete Notes & Solved Numericals"
               className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300">Branch <span className="text-red-400">*</span></label>
-              <select 
-                value={selectedBranch}
-                onChange={(e) => {
-                  setSelectedBranch(e.target.value)
-                  setSelectedSemester('') // reset downstream
-                }}
-                required
-                className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 appearance-none"
-              >
-                <option value="" disabled>Select Branch...</option>
-                {branches.map(branch => (
-                  <option key={branch.id} value={branch.id}>{branch.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300">Semester <span className="text-red-400">*</span></label>
-              <select 
-                value={selectedSemester}
-                onChange={(e) => setSelectedSemester(e.target.value)}
-                required
-                disabled={!selectedBranch}
-                className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 appearance-none disabled:opacity-50"
-              >
-                <option value="" disabled>Select Semester...</option>
-                {filteredSemesters.map(sem => (
-                  <option key={sem.id} value={sem.id}>Semester {sem.number}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300">Subject <span className="text-red-400">*</span></label>
-              <select 
-                name="subject_id" 
-                defaultValue={initialData?.subject_id || ''} 
-                required
-                disabled={!selectedSemester}
-                className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 appearance-none disabled:opacity-50"
-              >
-                <option value="" disabled>Select Subject...</option>
-                {filteredSubjects.map(sub => (
-                  <option key={sub.id} value={sub.id}>{sub.name}</option>
-                ))}
-              </select>
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-300">Subject <span className="text-red-400">*</span></label>
+            <select 
+              name="subject_id" 
+              value={selectedSubjectId}
+              onChange={(e) => setSelectedSubjectId(e.target.value)}
+              required
+              className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 appearance-none"
+            >
+              <option value="" disabled>Select Subject...</option>
+              {(() => {
+                const seenSubjects = new Set<string>()
+                return subjects.filter(sub => {
+                  const sNum = (sub as any).semesters?.number || semesters.find(s => s.id === sub.semester_id)?.number || '?'
+                  const key = `${sub.name.trim().toLowerCase()}_sem_${sNum}`
+                  if (seenSubjects.has(key)) return false
+                  seenSubjects.add(key)
+                  return true
+                }).map(sub => {
+                  const sNum = (sub as any).semesters?.number || semesters.find(s => s.id === sub.semester_id)?.number || '?'
+                  return (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} — (Sem {sNum})
+                    </option>
+                  )
+                })
+              })()}
+            </select>
           </div>
 
-
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Resource Type <span className="text-red-400">*</span></label>
+            <label className="text-sm font-medium text-zinc-300">Resource Category <span className="text-red-400">*</span></label>
             <select 
               name="type" 
               defaultValue={initialData?.type || 'notes'} 
@@ -148,89 +148,228 @@ export default function ResourceForm({
             >
               <option value="notes">Notes</option>
               <option value="pyq">PYQ (Past Year Question)</option>
-              <option value="video">Video</option>
+              <option value="video">Video Lecture</option>
               <option value="syllabus">Syllabus</option>
               <option value="important_questions">Important Questions</option>
-              <option value="ai_resources">AI Resources</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Storage Location <span className="text-red-400">*</span></label>
-            <select 
-              name="storage_type" 
-              value={storageType}
-              onChange={(e) => setStorageType(e.target.value)}
-              required
-              className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 appearance-none"
-            >
-              <option value="supabase_file">Supabase Storage</option>
-              <option value="google_drive">Google Drive</option>
-              <option value="youtube">YouTube</option>
-              <option value="external_link">External Link</option>
+              <option value="ai_resources">AI Summaries / Cheat Sheets</option>
             </select>
           </div>
         </div>
 
+        {selectedSubject && (
+          <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-800/40 space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="bg-indigo-900/60 text-indigo-200 px-3 py-1 rounded-full font-semibold">
+                📍 Auto Branch: {(selectedSubject as any).branches?.name || branches.find(b => b.id === selectedSubject.branch_id)?.name || 'Detected'}
+              </span>
+              <span className="bg-purple-900/60 text-purple-200 px-3 py-1 rounded-full font-semibold">
+                🎓 Semester: {(selectedSubject as any).semesters?.number || semesters.find(s => s.id === selectedSubject.semester_id)?.number || '1'}
+              </span>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input 
+                type="checkbox" 
+                name="apply_to_all_branches" 
+                defaultChecked={true} 
+                className="w-4 h-4 mt-0.5 rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-indigo-500" 
+              />
+              <div>
+                <span className="text-sm font-semibold text-indigo-200 block">
+                  Publish across all branches teaching "{selectedSubject.name}"
+                </span>
+                <span className="text-xs text-indigo-300/80">
+                  Automatically links this resource to CS, IT, ECE, AI, etc. if they have "{selectedSubject.name}" in Sem {(selectedSubject as any).semesters?.number || semesters.find(s => s.id === selectedSubject.semester_id)?.number || '1'}.
+                </span>
+              </div>
+            </label>
+          </div>
+        )}
+
         <div className="space-y-2">
-          <label className="text-sm font-medium text-zinc-300">Description</label>
+          <label className="text-sm font-medium text-zinc-300">Description / Guidelines</label>
           <textarea 
             name="description" 
             defaultValue={initialData?.description} 
             rows={3}
+            placeholder="Brief description or instructions for students..."
             className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50 resize-none"
           />
         </div>
 
-        <div className="p-6 rounded-xl border border-dashed border-zinc-700/50 bg-zinc-950/50">
-          <h3 className="text-sm font-medium text-zinc-300 mb-4">File Configuration</h3>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-zinc-300">Storage Location <span className="text-red-400">*</span></label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { id: 'supabase_file', label: 'Supabase File', icon: UploadCloud },
+              { id: 'google_drive', label: 'Google Drive', icon: HardDrive },
+              { id: 'youtube', label: 'YouTube Video', icon: Video },
+              { id: 'external_link', label: 'External Link', icon: ExternalLink },
+            ].map(tab => {
+              const Icon = tab.icon
+              const isSelected = storageType === tab.id
+              return (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setStorageType(tab.id)}
+                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-sm font-medium transition-all ${
+                    isSelected
+                      ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-lg shadow-indigo-500/10'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'
+                  }`}
+                >
+                  <Icon size={16} className={isSelected ? 'text-indigo-400' : 'text-zinc-500'} />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+          <input type="hidden" name="storage_type" value={storageType} />
+        </div>
+
+        <div className="p-6 rounded-xl border border-dashed border-zinc-700/60 bg-zinc-950/60">
+          <h3 className="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+            {storageType === 'supabase_file' && <><UploadCloud size={18} className="text-indigo-400" /> Upload File to Supabase Storage</>}
+            {storageType === 'google_drive' && <><HardDrive size={18} className="text-emerald-400" /> Google Drive Link Configuration</>}
+            {storageType === 'youtube' && <><Video size={18} className="text-rose-400" /> YouTube Video Integration</>}
+            {storageType === 'external_link' && <><ExternalLink size={18} className="text-amber-400" /> External Resource Link</>}
+          </h3>
           
           {storageType === 'supabase_file' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-center w-full">
-                <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-800 border-dashed rounded-lg cursor-pointer bg-zinc-900/50 hover:bg-zinc-800 transition-colors">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <UploadCloud className="w-8 h-8 mb-3 text-zinc-400" />
-                    <p className="mb-2 text-sm text-zinc-400"><span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop</p>
-                    <p className="text-xs text-zinc-500">PDF, DOCX, ZIP (Max 50MB)</p>
+              <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full min-h-[140px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 transition-all p-6">
+                {selectedFile ? (
+                  <div className="flex items-center gap-4 text-left">
+                    <div className="p-3 bg-indigo-500/20 border border-indigo-500/40 rounded-xl text-indigo-400">
+                      <FileText size={28} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white flex items-center gap-2">
+                        {selectedFile.name}
+                        <CheckCircle2 size={16} className="text-emerald-400" />
+                      </div>
+                      <div className="text-xs text-zinc-400 mt-1">
+                        Size: {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
+                      </div>
+                      <span className="text-xs text-indigo-400 underline mt-2 inline-block">Click to select a different file</span>
+                    </div>
                   </div>
-                  <input id="dropzone-file" type="file" name="file_upload" className="hidden" />
-                </label>
-              </div>
-              {initialData?.file_url && (
-                <div className="text-xs text-emerald-400">Current file: {initialData.file_url.split('/').pop()}</div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <UploadCloud className="w-10 h-10 mb-3 text-indigo-400" />
+                    <p className="mb-1 text-sm text-zinc-300"><span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop</p>
+                    <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX, JPG (Max 50MB)</p>
+                  </div>
+                )}
+                <input 
+                  id="dropzone-file" 
+                  type="file" 
+                  name="file_upload" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) setSelectedFile(e.target.files[0])
+                  }}
+                />
+              </label>
+
+              {initialData?.file_url && !selectedFile && (
+                <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
+                  <span className="text-zinc-300 truncate max-w-[70%]">
+                    📁 Current File: <a href={initialData.file_url} target="_blank" rel="noreferrer" className="text-indigo-400 underline ml-1">{initialData.file_url.split('/').pop()}</a>
+                  </span>
+                  <span className="text-zinc-500">{initialData.file_size} ({initialData.file_format})</span>
+                </div>
               )}
             </div>
           )}
 
           {storageType === 'google_drive' && (
-            <input name="drive_url" defaultValue={initialData?.drive_url} placeholder="Google Drive Link" className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" />
+            <div className="space-y-2">
+              <input 
+                name="drive_url" 
+                defaultValue={initialData?.drive_url} 
+                placeholder="https://drive.google.com/file/d/..." 
+                className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" 
+              />
+              <p className="text-xs text-zinc-400">
+                💡 Note: Make sure sharing access is set to <span className="text-emerald-400 font-medium">"Anyone with the link can view"</span> on Google Drive.
+              </p>
+            </div>
           )}
 
           {storageType === 'youtube' && (
-            <input name="youtube_url" defaultValue={initialData?.youtube_url} placeholder="YouTube Video URL" className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" />
+            <div className="space-y-4">
+              <input 
+                name="youtube_url" 
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..." 
+                className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" 
+              />
+              {youtubeVideoId && (
+                <div className="flex items-center gap-4 p-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                  <img 
+                    src={`https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg`} 
+                    alt="Video Thumbnail Preview" 
+                    className="w-28 h-16 object-cover rounded-lg bg-zinc-950"
+                  />
+                  <div>
+                    <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 size={14} /> Video ID Detected: {youtubeVideoId}
+                    </div>
+                    <div className="text-xs text-zinc-400 mt-1">
+                      High-res thumbnail will be automatically generated and displayed as a preview card inside the app.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {storageType === 'external_link' && (
-            <input name="external_url" defaultValue={initialData?.external_url} placeholder="External URL" className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" />
+            <div className="space-y-2">
+              <input 
+                name="external_url" 
+                defaultValue={initialData?.external_url} 
+                placeholder="https://example.com/study-material" 
+                className="w-full rounded-lg px-4 py-3 bg-zinc-900 border border-zinc-800 text-white focus:ring-2 focus:ring-indigo-500/50" 
+              />
+              <p className="text-xs text-zinc-400">
+                Students will be able to open this web link directly inside the app browser.
+              </p>
+            </div>
           )}
         </div>
 
-        <div className="pt-4 flex items-center justify-between border-t border-zinc-800/50">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <div className="relative">
-              <input type="checkbox" name="is_active" defaultChecked={initialData ? initialData.is_active : true} className="sr-only peer" />
-              <div className="w-11 h-6 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
-            </div>
-            <span className="text-sm font-medium text-zinc-300">Active / Visible</span>
-          </label>
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-zinc-400">Sort Order / Priority</label>
+            <input 
+              type="number" 
+              name="sort_order" 
+              defaultValue={initialData?.sort_order || 0} 
+              className="w-full rounded-lg px-3 py-2 bg-zinc-950 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div className="relative">
+                <input type="checkbox" name="is_active" defaultChecked={initialData ? initialData.is_active : true} className="sr-only peer" />
+                <div className="w-11 h-6 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+              </div>
+              <span className="text-sm font-medium text-zinc-300">Active & Visible in App</span>
+            </label>
+          </div>
+        </div>
 
+        <div className="pt-4 flex items-center justify-end border-t border-zinc-800/50">
           <button 
             disabled={isPending}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20"
           >
-            {isPending ? 'Uploading...' : (
-              <><Save size={18} /> Save Resource</>
+            {isPending ? 'Publishing Resource...' : (
+              <><Save size={18} /> {initialData ? 'Update Resource' : 'Publish Resource'}</>
             )}
           </button>
         </div>
@@ -238,3 +377,4 @@ export default function ResourceForm({
     </div>
   )
 }
+

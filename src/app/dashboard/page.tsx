@@ -18,7 +18,7 @@ async function getStats() {
     { data: ordersData }
   ] = await Promise.all([
     supabase.from('subjects').select('*', { count: 'exact', head: true }),
-    supabase.from('resources').select('*', { count: 'exact', head: true }),
+    supabase.from('resources').select('*', { count: 'exact', head: true }).eq('is_active', true),
     supabase.from('skills').select('*', { count: 'exact', head: true }),
     supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
     supabase.from('orders').select('*, marketplace_services(price)').eq('status', 'completed')

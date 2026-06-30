@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { sendFirebaseNotification } from '@/utils/firebaseAdmin'
 
 export async function createNotification(formData: FormData) {
   const supabase = await createAdminClient()
@@ -21,11 +22,19 @@ export async function createNotification(formData: FormData) {
   })
 
   if (error) {
-    console.error(error)
+    console.error('❌ Error inserting notification:', error)
     return { error: error.message }
   }
 
-  // Future enhancement: Trigger Expo Push Notification API here using the title/message
+  // Trigger Firebase Push Notification
+  console.log('🚀 Triggering push notification via Firebase Admin SDK...')
+  await sendFirebaseNotification({
+    title,
+    body: message,
+    targetBranchId: target_branch_id,
+    targetSemesterId: target_semester_id,
+    sendToAll: !target_branch_id && !target_semester_id,
+  })
 
   revalidatePath('/dashboard/notifications')
   redirect('/dashboard/notifications')

@@ -10,7 +10,7 @@ export default async function EditResourcePage({ params }: { params: Promise<{ i
     supabase.from('resources').select('*').eq('id', resolvedParams.id).single(),
     supabase.from('branches').select('id, name').order('name'),
     supabase.from('semesters').select('id, branch_id, number').order('number'),
-    supabase.from('subjects').select('id, semester_id, branch_id, name').order('name')
+    supabase.from('subjects').select('id, semester_id, branch_id, name, branches(name), semesters(number)').order('name')
   ])
 
   if (!resourceRes.data) notFound()

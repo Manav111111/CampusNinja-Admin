@@ -16,9 +16,10 @@ export async function createProduct(formData: FormData) {
   const is_active = formData.get('is_active') === 'on'
   const requires_file_upload = formData.get('requires_file_upload') === 'on'
   const upload_instructions = formData.get('upload_instructions') as string || null
+  const payment_options = formData.get('payment_options') as string || 'cod'
 
   const { error } = await supabase.from('products').insert({
-    title, description, price, category, thumbnail_url, drive_link, is_active, requires_file_upload, upload_instructions
+    title, description, price, category, thumbnail_url, drive_link, is_active, requires_file_upload, upload_instructions, payment_options
   })
 
   if (error) {
@@ -43,9 +44,10 @@ export async function updateProduct(formData: FormData) {
   const is_active = formData.get('is_active') === 'on'
   const requires_file_upload = formData.get('requires_file_upload') === 'on'
   const upload_instructions = formData.get('upload_instructions') as string || null
+  const payment_options = formData.get('payment_options') as string || 'cod'
 
   const { error } = await supabase.from('products').update({
-    title, description, price, category, thumbnail_url, drive_link, is_active, requires_file_upload, upload_instructions
+    title, description, price, category, thumbnail_url, drive_link, is_active, requires_file_upload, upload_instructions, payment_options
   }).eq('id', id)
 
   if (error) {

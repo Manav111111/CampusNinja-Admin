@@ -13,7 +13,8 @@ import {
   ShoppingCart,
   Layout,
   Bell,
-  Truck
+  Truck,
+  Share2
 } from 'lucide-react'
 
 export default async function DashboardLayout({
@@ -78,6 +79,10 @@ export default async function DashboardLayout({
           <Link href="/dashboard/notifications" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
             <Bell size={18} />
             Notifications
+          </Link>
+          <Link href="/dashboard/social-links" className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800/50 hover:text-indigo-400 transition-colors">
+            <Share2 size={18} />
+            Social Links
           </Link>
           
           <div className="pt-4 pb-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider px-3">

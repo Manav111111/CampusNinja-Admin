@@ -116,26 +116,21 @@ export async function createResource(formData: FormData) {
     external_url = rawExt
   }
 
-  const apply_to_all_branches = formData.get('apply_to_all_branches') === 'on'
-
   let targetSubjectIds = [subject_id]
-  if (apply_to_all_branches) {
-    const { data: targetSub } = await supabase
+  const { data: targetSub } = await supabase
+    .from('subjects')
+    .select('name')
+    .eq('id', subject_id)
+    .single()
+
+  if (targetSub && targetSub.name) {
+    const { data: matchingSubs } = await supabase
       .from('subjects')
-      .select('name, semester_id')
-      .eq('id', subject_id)
-      .single()
+      .select('id')
+      .ilike('name', targetSub.name.trim())
 
-    if (targetSub) {
-      const { data: matchingSubs } = await supabase
-        .from('subjects')
-        .select('id')
-        .eq('name', targetSub.name)
-        .eq('semester_id', targetSub.semester_id)
-
-      if (matchingSubs && matchingSubs.length > 0) {
-        targetSubjectIds = matchingSubs.map(s => s.id)
-      }
+    if (matchingSubs && matchingSubs.length > 0) {
+      targetSubjectIds = matchingSubs.map(s => s.id)
     }
   }
 

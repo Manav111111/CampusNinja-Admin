@@ -330,6 +330,20 @@ export default function ProductForm({ initialData }: { initialData?: any }) {
           </div>
 
           <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium text-zinc-300">Payment Options <span className="text-red-400">*</span></label>
+            <select 
+              name="payment_options" 
+              defaultValue={initialData?.payment_options || 'cod'} 
+              required
+              className="w-full rounded-lg px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none"
+            >
+              <option value="cod">Cash on Delivery Only</option>
+              <option value="online">Online (Razorpay) Only</option>
+              <option value="both">Both (User Choice)</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
             <label className="text-sm font-medium text-zinc-300">Drive Link (Fulfillment)</label>
             <input 
               name="drive_link" 

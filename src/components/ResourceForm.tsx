@@ -65,7 +65,7 @@ export default function ResourceForm({
   initialSyllabusData?: { syllabus: any, units: SyllabusUnitData[] } | null,
   branches?: { id: string, name: string }[], 
   semesters?: { id: string, branch_id: string, number: number }[], 
-  subjects?: { id: string, semester_id: string, branch_id: string, name: string }[] 
+  subjects?: { id: string, semester_id?: string, branch_id?: string, name: string, short_name?: string, category?: string }[] 
 }) {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
@@ -423,24 +423,12 @@ export default function ResourceForm({
               required
               className="w-full rounded-xl px-4 py-3 bg-zinc-950 border border-zinc-800 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-sm font-medium"
             >
-              <option value="" disabled>Select Subject...</option>
-              {(() => {
-                const seenSubjects = new Set<string>()
-                return subjects.filter(sub => {
-                  const sNum = (sub as any).semesters?.number || semesters.find(s => s.id === sub.semester_id)?.number || '?'
-                  const key = `${sub.name.trim().toLowerCase()}_sem_${sNum}`
-                  if (seenSubjects.has(key)) return false
-                  seenSubjects.add(key)
-                  return true
-                }).map(sub => {
-                  const sNum = (sub as any).semesters?.number || semesters.find(s => s.id === sub.semester_id)?.number || '?'
-                  return (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} — (Sem {sNum})
-                    </option>
-                  )
-                })
-              })()}
+              <option value="" disabled>Select Master Subject...</option>
+              {subjects.map(sub => (
+                <option key={sub.id} value={sub.id}>
+                  {sub.name} {sub.short_name ? `(${sub.short_name})` : ''} {sub.category ? `• ${sub.category}` : ''}
+                </option>
+              ))}
             </select>
           </div>
 

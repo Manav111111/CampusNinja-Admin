@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/utils/supabase/server'
 import ResourceForm from '@/components/ResourceForm'
+import { getSubjectSyllabusData } from '../actions'
 import { notFound } from 'next/navigation'
 
 export default async function EditResourcePage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,9 +16,15 @@ export default async function EditResourcePage({ params }: { params: Promise<{ i
 
   if (!resourceRes.data) notFound()
 
+  let initialSyllabusData = null
+  if (resourceRes.data.type === 'syllabus' && resourceRes.data.subject_id) {
+    initialSyllabusData = await getSubjectSyllabusData(resourceRes.data.subject_id)
+  }
+
   return (
     <ResourceForm 
       initialData={resourceRes.data} 
+      initialSyllabusData={initialSyllabusData}
       branches={branchesRes.data || []}
       semesters={semestersRes.data || []}
       subjects={subjectsRes.data || []} 

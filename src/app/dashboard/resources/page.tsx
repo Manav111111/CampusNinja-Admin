@@ -118,7 +118,7 @@ export default async function ResourcesPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="capitalize text-xs text-zinc-400 font-medium">
-                        {resource.storage_type.replace('_', ' ')}
+                        {resource.type === 'syllabus' ? 'Unit-wise Data' : (resource.storage_type ? resource.storage_type.replace('_', ' ') : 'Database')}
                       </span>
                     </td>
                     <td className="px-6 py-4">

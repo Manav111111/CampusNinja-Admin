@@ -26,6 +26,8 @@ export interface SubjectRow {
   sort_order?: number
   branch_subjects?: OfferingItem[]
   // Legacy fields
+  branch_id?: string
+  semester_id?: string
   branches?: { name: string; short_code: string }
   semesters?: { number: number }
 }

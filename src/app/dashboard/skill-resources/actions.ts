@@ -24,14 +24,21 @@ export async function createSkillResource(formData: FormData) {
 
   // File Upload Handling
   const file = formData.get('file_upload') as File
-  if (file && file.size > 0 && storage_type === 'supabase_file') {
+  if (!file_url && file && file.size > 0 && storage_type === 'supabase_file') {
     const fileExt = file.name.split('.').pop()
     const fileName = `skill_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
     const filePath = `skills/${skill_id}/${fileName}`
 
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
     const { error: uploadError } = await supabase.storage
       .from('resources')
-      .upload(filePath, file)
+      .upload(filePath, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false,
+      })
 
     if (uploadError) {
       console.error("Upload error:", uploadError)
@@ -80,14 +87,21 @@ export async function updateSkillResource(formData: FormData) {
   const sort_order = parseInt(formData.get('sort_order') as string) || 0
 
   const file = formData.get('file_upload') as File
-  if (file && file.size > 0 && storage_type === 'supabase_file') {
+  if (!file_url && file && file.size > 0 && storage_type === 'supabase_file') {
     const fileExt = file.name.split('.').pop()
     const fileName = `skill_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
     const filePath = `skills/${skill_id}/${fileName}`
 
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
     const { error: uploadError } = await supabase.storage
       .from('resources')
-      .upload(filePath, file)
+      .upload(filePath, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false,
+      })
 
     if (uploadError) {
       return { error: 'File upload failed: ' + uploadError.message }

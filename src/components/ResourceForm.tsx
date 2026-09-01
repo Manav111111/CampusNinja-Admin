@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -23,7 +23,10 @@ import {
   Layers,
   Sparkles,
   BookOpen,
-  Info
+  Info,
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react'
 import { createResource, updateResource, getSubjectSyllabusData, SyllabusUnitData, SyllabusTopicData } from '@/app/dashboard/resources/actions'
 
@@ -76,6 +79,121 @@ export default function ResourceForm({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [youtubeUrl, setYoutubeUrl] = useState(initialData?.youtube_url || '')
   const [showOptionalSyllabusFile, setShowOptionalSyllabusFile] = useState(Boolean(initialSyllabusData?.syllabus?.file_url || initialData?.file_url))
+
+  // Fast Async Upload State
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadBytesStatus, setUploadBytesStatus] = useState<string>('')
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string>(initialData?.file_url || '')
+  const [uploadedFileSize, setUploadedFileSize] = useState<string>(initialData?.file_size || '')
+  const [uploadedFileFormat, setUploadedFileFormat] = useState<string>(initialData?.file_format || '')
+  const [uploadedFileName, setUploadedFileName] = useState<string>(
+    initialData?.file_url ? (initialData.file_url.split('/').pop() || 'Existing Attachment') : ''
+  )
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const activeUploadXhrRef = useRef<XMLHttpRequest | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const syllabusFileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadFileWithProgress = (file: File) => {
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError('File is too large. Maximum allowed size is 50MB.')
+      return
+    }
+
+    if (activeUploadXhrRef.current) {
+      activeUploadXhrRef.current.abort()
+      activeUploadXhrRef.current = null
+    }
+
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadError(null)
+    setSelectedFile(file)
+    setUploadedFileName(file.name)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('folder', selectedSubjectId || 'academic')
+
+    const xhr = new XMLHttpRequest()
+    activeUploadXhrRef.current = xhr
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100)
+        setUploadProgress(percent)
+        const loadedMB = (event.loaded / (1024 * 1024)).toFixed(2)
+        const totalMB = (event.total / (1024 * 1024)).toFixed(2)
+        setUploadBytesStatus(`${loadedMB} MB / ${totalMB} MB (${percent}%)`)
+      }
+    }
+
+    xhr.onload = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText)
+          if (res.success && res.url) {
+            setUploadedFileUrl(res.url)
+            setUploadedFileSize(res.fileSize)
+            setUploadedFileFormat(res.fileFormat)
+            setUploadProgress(100)
+            setUploadError(null)
+          } else {
+            setUploadError(res.error || 'Upload failed.')
+            setUploadProgress(0)
+          }
+        } catch {
+          setUploadError('Failed to parse server response.')
+          setUploadProgress(0)
+        }
+      } else {
+        try {
+          const res = JSON.parse(xhr.responseText)
+          setUploadError(res.error || `Upload failed (Status ${xhr.status})`)
+        } catch {
+          setUploadError(`Upload failed (Status ${xhr.status})`)
+        }
+        setUploadProgress(0)
+      }
+    }
+
+    xhr.onerror = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      setUploadError('Network error while uploading. Please check connection.')
+      setUploadProgress(0)
+    }
+
+    xhr.onabort = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
+
+    xhr.open('POST', '/api/upload-resource')
+    xhr.send(formData)
+  }
+
+  const cancelUpload = () => {
+    if (activeUploadXhrRef.current) {
+      activeUploadXhrRef.current.abort()
+      activeUploadXhrRef.current = null
+    }
+    setIsUploading(false)
+    setUploadProgress(0)
+    setUploadBytesStatus('')
+    setSelectedFile(null)
+    setUploadedFileUrl('')
+    setUploadedFileSize('')
+    setUploadedFileFormat('')
+    setUploadedFileName('')
+    setUploadError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (syllabusFileInputRef.current) syllabusFileInputRef.current.value = ''
+  }
 
   // Syllabus Editor State
   const [units, setUnits] = useState<EditableUnit[]>(() => {
@@ -292,6 +410,12 @@ export default function ResourceForm({
       return
     }
 
+    if (isUploading) {
+      setError('Please wait for the file upload to complete before saving.')
+      setIsPending(false)
+      return
+    }
+
     if (resourceType === 'syllabus') {
       if (units.length === 0) {
         setError('Please add at least 1 unit to the syllabus.')
@@ -310,7 +434,7 @@ export default function ResourceForm({
         }
       }
     } else {
-      if (storageType === 'supabase_file' && !initialData?.file_url && !selectedFile) {
+      if (storageType === 'supabase_file' && !uploadedFileUrl && !selectedFile) {
         setError('Please select a file (PDF, DOCX, ZIP) to upload.')
         setIsPending(false)
         return
@@ -319,6 +443,14 @@ export default function ResourceForm({
 
     const formData = new FormData(e.currentTarget)
     
+    // Pass pre-uploaded file metadata for instant DB save
+    if (uploadedFileUrl) {
+      formData.set('file_url', uploadedFileUrl)
+      formData.set('file_size', uploadedFileSize)
+      formData.set('file_format', uploadedFileFormat)
+      formData.set('file_name', uploadedFileName)
+    }
+
     // Prepare structured units data payload
     if (resourceType === 'syllabus') {
       const serializableUnits = units.map((u, idx) => ({
@@ -834,38 +966,85 @@ export default function ResourceForm({
                   <input type="hidden" name="storage_type" value={storageType} />
 
                   {storageType === 'supabase_file' && (
-                    <div>
-                      <label htmlFor="syllabus-dropzone-file" className="flex flex-col items-center justify-center w-full min-h-[100px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 transition-all p-4">
-                        {selectedFile ? (
-                          <div className="flex items-center gap-3 text-left">
-                            <FileText size={24} className="text-indigo-400" />
-                            <div>
-                              <div className="font-semibold text-white text-xs">{selectedFile.name}</div>
-                              <div className="text-[11px] text-zinc-400">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready</div>
+                    <div className="space-y-3">
+                      {isUploading && (
+                        <div className="p-4 rounded-xl bg-zinc-900 border border-indigo-500/40 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 text-white font-medium">
+                              <Loader2 size={16} className="animate-spin text-indigo-400" />
+                              <span className="truncate max-w-[200px]">{uploadedFileName || selectedFile?.name}</span>
                             </div>
+                            <span className="text-indigo-400 font-mono">{uploadBytesStatus || `${uploadProgress}%`}</span>
                           </div>
-                        ) : (
-                          <div className="text-center">
-                            <UploadCloud className="w-6 h-6 mb-1.5 text-indigo-400 mx-auto" />
-                            <p className="text-xs text-zinc-300 font-medium">Click to upload syllabus PDF</p>
+                          <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-800">
+                            <div
+                              className="bg-indigo-500 h-full rounded-full transition-all duration-150"
+                              style={{ width: `${uploadProgress}%` }}
+                            />
                           </div>
-                        )}
-                        <input 
-                          id="syllabus-dropzone-file" 
-                          type="file" 
-                          name="file_upload" 
-                          accept=".pdf,.docx,.zip"
-                          className="hidden" 
-                          onChange={(e) => {
-                            if (e.target.files?.[0]) setSelectedFile(e.target.files[0])
-                          }}
-                        />
-                      </label>
-                      {initialSyllabusData?.syllabus?.file_url && !selectedFile && (
-                        <div className="mt-2 text-xs text-zinc-400">
-                          Current Attachment: <a href={initialSyllabusData.syllabus.file_url} target="_blank" rel="noreferrer" className="text-indigo-400 underline">{initialSyllabusData.syllabus.file_name || 'Download PDF'}</a>
                         </div>
                       )}
+
+                      {uploadError && !isUploading && (
+                        <div className="p-3 rounded-xl bg-red-950/50 border border-red-900/50 text-xs text-red-400 flex items-center justify-between">
+                          <span>{uploadError}</span>
+                          <button
+                            type="button"
+                            onClick={() => syllabusFileInputRef.current?.click()}
+                            className="underline hover:text-red-300 ml-2"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {uploadedFileUrl && !isUploading && (
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-900 border border-emerald-500/30 text-xs">
+                          <div className="flex items-center gap-2">
+                            <FileText size={18} className="text-emerald-400 shrink-0" />
+                            <div>
+                              <div className="font-semibold text-white truncate max-w-[200px]">
+                                {uploadedFileName || 'Syllabus Document'}
+                              </div>
+                              <div className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                                <span>{uploadedFileSize}</span>
+                                <span>•</span>
+                                <a href={uploadedFileUrl} target="_blank" rel="noreferrer" className="text-indigo-400 underline">
+                                  View File
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={cancelUpload}
+                            className="p-1.5 text-zinc-400 hover:text-red-400 transition-colors"
+                            title="Remove file"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+
+                      {!uploadedFileUrl && !isUploading && (
+                        <label htmlFor="syllabus-dropzone-file" className="flex flex-col items-center justify-center w-full min-h-[100px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 transition-all p-4">
+                          <div className="text-center">
+                            <UploadCloud className="w-6 h-6 mb-1.5 text-indigo-400 mx-auto" />
+                            <p className="text-xs text-zinc-300 font-medium">Click to upload syllabus PDF (Max 50MB)</p>
+                          </div>
+                        </label>
+                      )}
+
+                      <input 
+                        ref={syllabusFileInputRef}
+                        id="syllabus-dropzone-file" 
+                        type="file" 
+                        accept=".pdf,.docx,.zip"
+                        className="hidden" 
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) uploadFileWithProgress(e.target.files[0])
+                        }}
+                      />
                     </div>
                   )}
 
@@ -936,49 +1115,140 @@ export default function ResourceForm({
               
               {storageType === 'supabase_file' && (
                 <div className="space-y-4">
-                  <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full min-h-[140px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 transition-all p-6">
-                    {selectedFile ? (
-                      <div className="flex items-center gap-4 text-left">
-                        <div className="p-3 bg-indigo-500/20 border border-indigo-500/40 rounded-xl text-indigo-400">
+                  {/* 1. Upload in Progress with Real-Time Progress Bar */}
+                  {isUploading && (
+                    <div className="p-6 rounded-2xl bg-zinc-900/90 border border-indigo-500/40 backdrop-blur-xl space-y-4 shadow-xl">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 bg-indigo-500/20 text-indigo-400 rounded-2xl animate-pulse">
+                            <Loader2 size={28} className="animate-spin" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-white text-base truncate max-w-xs sm:max-w-md">
+                              {uploadedFileName || selectedFile?.name || 'Uploading file...'}
+                            </div>
+                            <div className="text-xs text-indigo-400 font-mono mt-1">
+                              {uploadBytesStatus || `${uploadProgress}% uploading to Supabase Storage...`}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={cancelUpload}
+                          className="p-2 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                          title="Cancel Upload"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      {/* Animated Gradient Progress Bar */}
+                      <div className="w-full bg-zinc-950 rounded-full h-3 overflow-hidden p-0.5 border border-zinc-800">
+                        <div
+                          className="bg-gradient-to-r from-indigo-500 via-indigo-400 to-emerald-400 h-full rounded-full transition-all duration-150 shadow-[0_0_15px_rgba(99,102,241,0.6)]"
+                          style={{ width: `${Math.max(uploadProgress, 4)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Upload Error with Retry */}
+                  {uploadError && !isUploading && (
+                    <div className="p-4 rounded-xl bg-red-950/50 border border-red-900/50 flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2.5 text-red-400">
+                        <AlertCircle size={20} className="shrink-0" />
+                        <span>{uploadError}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs font-semibold px-3 py-1.5 bg-red-900/50 hover:bg-red-800/50 text-red-200 rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <RefreshCw size={13} /> Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 3. Uploaded File Ready State */}
+                  {uploadedFileUrl && !isUploading && (
+                    <div className="p-5 rounded-2xl bg-zinc-900/90 border border-emerald-500/40 backdrop-blur-xl flex items-center justify-between shadow-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
                           <FileText size={28} />
                         </div>
                         <div>
-                          <div className="font-semibold text-white flex items-center gap-2">
-                            {selectedFile.name}
-                            <CheckCircle2 size={16} className="text-emerald-400" />
+                          <div className="font-bold text-white text-base flex items-center gap-2.5">
+                            <span className="truncate max-w-[200px] sm:max-w-sm md:max-w-md">
+                              {uploadedFileName || 'Uploaded File'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60 uppercase tracking-wider">
+                              <CheckCircle2 size={13} /> Ready
+                            </span>
                           </div>
-                          <div className="text-xs text-zinc-400 mt-1">
-                            Size: {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
+                          <div className="text-xs text-zinc-400 mt-1 flex items-center gap-2">
+                            {uploadedFileSize && <span>{uploadedFileSize}</span>}
+                            {uploadedFileFormat && <span>• {uploadedFileFormat}</span>}
+                            <span>•</span>
+                            <a
+                              href={uploadedFileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-indigo-400 hover:text-indigo-300 underline font-medium"
+                            >
+                              Preview / Download
+                            </a>
                           </div>
-                          <span className="text-xs text-indigo-400 underline mt-2 inline-block">Click to select a different file</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center text-center">
-                        <UploadCloud className="w-10 h-10 mb-3 text-indigo-400" />
-                        <p className="mb-1 text-sm text-zinc-300"><span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop</p>
-                        <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX, JPG (Max 50MB)</p>
-                      </div>
-                    )}
-                    <input 
-                      id="dropzone-file" 
-                      type="file" 
-                      name="file_upload" 
-                      className="hidden" 
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) setSelectedFile(e.target.files[0])
-                      }}
-                    />
-                  </label>
 
-                  {initialData?.file_url && !selectedFile && (
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
-                      <span className="text-zinc-300 truncate max-w-[70%]">
-                        📁 Current File: <a href={initialData.file_url} target="_blank" rel="noreferrer" className="text-indigo-400 underline ml-1">{initialData.file_url.split('/').pop()}</a>
-                      </span>
-                      <span className="text-zinc-500">{initialData.file_size} ({initialData.file_format})</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-xs font-medium px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-xl transition-colors"
+                        >
+                          Change File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelUpload}
+                          className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-colors"
+                          title="Remove File"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   )}
+
+                  {/* 4. Dropzone for file selection */}
+                  {!uploadedFileUrl && !isUploading && (
+                    <label
+                      htmlFor="dropzone-file"
+                      className="flex flex-col items-center justify-center w-full min-h-[140px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 hover:border-indigo-500/50 transition-all p-6 group"
+                    >
+                      <div className="flex flex-col items-center justify-center text-center">
+                        <div className="p-3 bg-indigo-500/10 rounded-2xl group-hover:bg-indigo-500/20 group-hover:scale-110 transition-all mb-3 text-indigo-400">
+                          <UploadCloud size={30} />
+                        </div>
+                        <p className="mb-1 text-sm text-zinc-300">
+                          <span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop
+                        </p>
+                        <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX, JPG, PNG (Max 50MB)</p>
+                      </div>
+                    </label>
+                  )}
+
+                  <input 
+                    ref={fileInputRef}
+                    id="dropzone-file" 
+                    type="file" 
+                    accept=".pdf,.docx,.doc,.zip,.pptx,.ppt,.jpg,.jpeg,.png,.txt"
+                    className="hidden" 
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) uploadFileWithProgress(e.target.files[0])
+                    }}
+                  />
                 </div>
               )}
 

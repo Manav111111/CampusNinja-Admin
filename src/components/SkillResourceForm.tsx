@@ -1,8 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Save, UploadCloud } from 'lucide-react'
+import { 
+  ArrowLeft, 
+  Save, 
+  UploadCloud, 
+  FileText, 
+  CheckCircle2, 
+  Loader2, 
+  AlertCircle, 
+  RefreshCw, 
+  Trash2, 
+  X 
+} from 'lucide-react'
 import { createSkillResource, updateSkillResource } from '@/app/dashboard/skill-resources/actions'
 
 export default function SkillResourceForm({ 
@@ -17,12 +28,132 @@ export default function SkillResourceForm({
   const [storageType, setStorageType] = useState(initialData?.storage_type || 'supabase_file')
   const [selectedSkillId, setSelectedSkillId] = useState(initialData?.skill_id || (skills[0]?.id || ''))
 
+  // Fast Async Upload State
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadBytesStatus, setUploadBytesStatus] = useState<string>('')
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string>(initialData?.file_url || '')
+  const [uploadedFileName, setUploadedFileName] = useState<string>(
+    initialData?.file_url ? (initialData.file_url.split('/').pop() || 'Existing Attachment') : ''
+  )
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const activeUploadXhrRef = useRef<XMLHttpRequest | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadFileWithProgress = (file: File) => {
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError('File is too large. Maximum allowed size is 50MB.')
+      return
+    }
+
+    if (activeUploadXhrRef.current) {
+      activeUploadXhrRef.current.abort()
+      activeUploadXhrRef.current = null
+    }
+
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadError(null)
+    setUploadedFileName(file.name)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('folder', `skills_${selectedSkillId || 'general'}`)
+
+    const xhr = new XMLHttpRequest()
+    activeUploadXhrRef.current = xhr
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100)
+        setUploadProgress(percent)
+        const loadedMB = (event.loaded / (1024 * 1024)).toFixed(2)
+        const totalMB = (event.total / (1024 * 1024)).toFixed(2)
+        setUploadBytesStatus(`${loadedMB} MB / ${totalMB} MB (${percent}%)`)
+      }
+    }
+
+    xhr.onload = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText)
+          if (res.success && res.url) {
+            setUploadedFileUrl(res.url)
+            setUploadProgress(100)
+            setUploadError(null)
+          } else {
+            setUploadError(res.error || 'Upload failed.')
+            setUploadProgress(0)
+          }
+        } catch {
+          setUploadError('Failed to parse upload server response.')
+          setUploadProgress(0)
+        }
+      } else {
+        try {
+          const res = JSON.parse(xhr.responseText)
+          setUploadError(res.error || `Upload failed (Status ${xhr.status})`)
+        } catch {
+          setUploadError(`Upload failed (Status ${xhr.status})`)
+        }
+        setUploadProgress(0)
+      }
+    }
+
+    xhr.onerror = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      setUploadError('Network error while uploading file. Please check connection.')
+      setUploadProgress(0)
+    }
+
+    xhr.onabort = () => {
+      activeUploadXhrRef.current = null
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
+
+    xhr.open('POST', '/api/upload-resource')
+    xhr.send(formData)
+  }
+
+  const cancelUpload = () => {
+    if (activeUploadXhrRef.current) {
+      activeUploadXhrRef.current.abort()
+      activeUploadXhrRef.current = null
+    }
+    setIsUploading(false)
+    setUploadProgress(0)
+    setUploadBytesStatus('')
+    setUploadedFileUrl('')
+    setUploadedFileName('')
+    setUploadError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsPending(true)
     setError(null)
+
+    if (isUploading) {
+      setError('Please wait for the file to finish uploading before saving.')
+      setIsPending(false)
+      return
+    }
+
+    if (storageType === 'supabase_file' && !uploadedFileUrl) {
+      setError('Please select a file to upload.')
+      setIsPending(false)
+      return
+    }
     
     const formData = new FormData(e.currentTarget)
+    if (uploadedFileUrl) {
+      formData.set('file_url', uploadedFileUrl)
+    }
     
     let result
     if (initialData?.id) {
@@ -135,20 +266,137 @@ export default function SkillResourceForm({
           </div>
 
           {storageType === 'supabase_file' && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300">Upload File</label>
-              <div className="border-2 border-dashed border-zinc-800 hover:border-zinc-700 transition-colors rounded-xl p-6 text-center">
-                <UploadCloud className="mx-auto h-10 w-10 text-zinc-500 mb-2" />
-                <input 
-                  type="file" 
-                  name="file_upload" 
-                  className="w-full text-sm text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
-                />
-                {initialData?.file_url && (
-                  <p className="text-xs text-zinc-500 mt-2 truncate">Current file: {initialData.file_url}</p>
-                )}
-                <input type="hidden" name="file_url" value={initialData?.file_url || ''} />
-              </div>
+            <div className="space-y-4">
+              {/* 1. Upload in Progress with Progress Bar */}
+              {isUploading && (
+                <div className="p-5 rounded-2xl bg-zinc-900/90 border border-indigo-500/40 backdrop-blur-xl space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl animate-pulse">
+                        <Loader2 size={24} className="animate-spin" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-white text-sm truncate max-w-xs sm:max-w-md">
+                          {uploadedFileName || 'Uploading file...'}
+                        </div>
+                        <div className="text-xs text-indigo-400 font-mono mt-0.5">
+                          {uploadBytesStatus || `${uploadProgress}% uploading...`}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelUpload}
+                      className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                      title="Cancel Upload"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="w-full bg-zinc-950 rounded-full h-2.5 overflow-hidden p-0.5 border border-zinc-800">
+                    <div
+                      className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-150 shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                      style={{ width: `${Math.max(uploadProgress, 4)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Upload Error with Retry */}
+              {uploadError && !isUploading && (
+                <div className="p-4 rounded-xl bg-red-950/50 border border-red-900/50 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2.5 text-red-400">
+                    <AlertCircle size={18} className="shrink-0" />
+                    <span>{uploadError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs font-semibold px-3 py-1.5 bg-red-900/50 hover:bg-red-800/50 text-red-200 rounded-lg transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw size={12} /> Retry
+                  </button>
+                </div>
+              )}
+
+              {/* 3. Uploaded File Ready State */}
+              {uploadedFileUrl && !isUploading && (
+                <div className="p-5 rounded-2xl bg-zinc-900/90 border border-emerald-500/40 backdrop-blur-xl flex items-center justify-between shadow-lg">
+                  <div className="flex items-center gap-3.5">
+                    <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                      <FileText size={24} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white text-sm flex items-center gap-2">
+                        <span className="truncate max-w-[200px] sm:max-w-sm md:max-w-md">
+                          {uploadedFileName || 'Uploaded Resource File'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60 uppercase tracking-wider">
+                          <CheckCircle2 size={12} /> Ready
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-400 mt-1 flex items-center gap-2">
+                        <a
+                          href={uploadedFileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-400 hover:text-indigo-300 underline font-medium"
+                        >
+                          View Uploaded Document
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-xs font-medium px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-lg transition-colors"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelUpload}
+                      className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"
+                      title="Remove File"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Dropzone for initial file selection */}
+              {!uploadedFileUrl && !isUploading && (
+                <label
+                  htmlFor="skill-dropzone-file"
+                  className="flex flex-col items-center justify-center w-full min-h-[140px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-950/50 hover:bg-zinc-900/80 hover:border-indigo-500/50 transition-all p-6 group"
+                >
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="p-3 bg-indigo-500/10 rounded-2xl group-hover:bg-indigo-500/20 group-hover:scale-110 transition-all mb-3 text-indigo-400">
+                      <UploadCloud size={28} />
+                    </div>
+                    <p className="mb-1 text-sm text-zinc-300">
+                      <span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop
+                    </p>
+                    <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX (Max 50MB)</p>
+                  </div>
+                </label>
+              )}
+
+              <input 
+                ref={fileInputRef}
+                id="skill-dropzone-file" 
+                type="file" 
+                accept=".pdf,.docx,.doc,.zip,.pptx,.ppt,.jpg,.jpeg,.png,.txt"
+                className="hidden" 
+                onChange={(e) => {
+                  if (e.target.files?.[0]) uploadFileWithProgress(e.target.files[0])
+                }}
+              />
             </div>
           )}
 

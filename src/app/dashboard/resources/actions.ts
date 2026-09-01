@@ -168,20 +168,27 @@ export async function saveSyllabusAction(formData: FormData) {
   }
 
   // 3. Handle Optional Reference File / PDF
-  let file_url: string | null = (formData.get('existing_file_url') as string) || null
-  let file_name: string | null = (formData.get('existing_file_name') as string) || null
-  let file_path: string | null = (formData.get('existing_file_path') as string) || null
+  let file_url: string | null = (formData.get('file_url') as string)?.trim() || (formData.get('existing_file_url') as string) || null
+  let file_name: string | null = (formData.get('file_name') as string)?.trim() || (formData.get('existing_file_name') as string) || null
+  let file_path: string | null = (formData.get('file_path') as string)?.trim() || (formData.get('existing_file_path') as string) || null
   const storage_type = (formData.get('storage_type') as string) || 'none'
 
-  if (storage_type === 'supabase_file') {
+  if (storage_type === 'supabase_file' && !file_url) {
     const file = formData.get('file_upload') as File
     if (file && file.size > 0) {
       const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
       const filePath = `syllabuses/${subject_id}/${Date.now()}_${cleanName}`
 
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+
       const { error: uploadError } = await supabase.storage
         .from('resources')
-        .upload(filePath, file, { cacheControl: '3600', upsert: true })
+        .upload(filePath, buffer, {
+          contentType: file.type || 'application/pdf',
+          cacheControl: '3600',
+          upsert: true
+        })
 
       if (uploadError) {
         console.error('Syllabus PDF upload error:', uploadError)
@@ -419,36 +426,50 @@ export async function createResource(formData: FormData) {
   const is_active = formData.get('is_active') !== 'off' && formData.get('is_active') !== 'false'
   const sort_order = parseInt(formData.get('sort_order') as string) || 0
 
+  const providedFileUrl = (formData.get('file_url') as string)?.trim()
+  const providedFileSize = (formData.get('file_size') as string)?.trim()
+  const providedFileFormat = (formData.get('file_format') as string)?.trim()
+
   if (storage_type === 'supabase_file') {
-    const file = formData.get('file_upload') as File
-    if (!file || file.size === 0) {
-      return { error: 'Please select a file (PDF, DOCX, ZIP) to upload.' }
+    if (providedFileUrl) {
+      file_url = providedFileUrl
+      file_size = providedFileSize || null
+      file_format = providedFileFormat || null
+    } else {
+      const file = formData.get('file_upload') as File
+      if (!file || file.size === 0) {
+        return { error: 'Please select a file (PDF, DOCX, ZIP) to upload.' }
+      }
+
+      const fileExt = file.name.split('.').pop() || 'file'
+      const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`
+      const filePath = `${subject_id}/${fileName}`
+
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+
+      const { error: uploadError } = await supabase.storage
+        .from('resources')
+        .upload(filePath, buffer, {
+          contentType: file.type || 'application/octet-stream',
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) {
+        console.error("Upload error:", uploadError)
+        return { error: 'File upload failed: ' + uploadError.message }
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('resources')
+        .getPublicUrl(filePath)
+
+      file_url = publicUrlData.publicUrl
+      file_size = formatBytes(file.size)
+      file_format = fileExt.toUpperCase()
     }
-
-    const fileExt = file.name.split('.').pop() || 'file'
-    const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`
-    const filePath = `${subject_id}/${fileName}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('resources')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      })
-
-    if (uploadError) {
-      console.error("Upload error:", uploadError)
-      return { error: 'File upload failed: ' + uploadError.message }
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('resources')
-      .getPublicUrl(filePath)
-
-    file_url = publicUrlData.publicUrl
-    file_size = formatBytes(file.size)
-    file_format = fileExt.toUpperCase()
   } else if (storage_type === 'google_drive') {
     let rawDrive = (formData.get('drive_url') as string)?.trim()
     if (!rawDrive) {
@@ -556,29 +577,46 @@ export async function updateResource(formData: FormData) {
   const is_active = formData.get('is_active') !== 'off' && formData.get('is_active') !== 'false'
   const sort_order = parseInt(formData.get('sort_order') as string) || 0
 
+  const providedFileUrl = (formData.get('file_url') as string)?.trim()
+  const providedFileSize = (formData.get('file_size') as string)?.trim()
+  const providedFileFormat = (formData.get('file_format') as string)?.trim()
+
   if (storage_type === 'supabase_file') {
-    const file = formData.get('file_upload') as File
-    if (file && file.size > 0) {
-      const fileExt = file.name.split('.').pop() || 'file'
-      const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`
-      const filePath = `${subject_id}/${fileName}`
+    if (providedFileUrl) {
+      file_url = providedFileUrl
+      file_size = providedFileSize || file_size
+      file_format = providedFileFormat || file_format
+    } else {
+      const file = formData.get('file_upload') as File
+      if (file && file.size > 0) {
+        const fileExt = file.name.split('.').pop() || 'file'
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${cleanName}`
+        const filePath = `${subject_id}/${fileName}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('resources')
-        .upload(filePath, file, { cacheControl: '3600', upsert: false })
+        const arrayBuffer = await file.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
 
-      if (uploadError) {
-        return { error: 'File upload failed: ' + uploadError.message }
+        const { error: uploadError } = await supabase.storage
+          .from('resources')
+          .upload(filePath, buffer, {
+            contentType: file.type || 'application/octet-stream',
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) {
+          return { error: 'File upload failed: ' + uploadError.message }
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('resources')
+          .getPublicUrl(filePath)
+
+        file_url = publicUrlData.publicUrl
+        file_size = formatBytes(file.size)
+        file_format = fileExt.toUpperCase()
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('resources')
-        .getPublicUrl(filePath)
-
-      file_url = publicUrlData.publicUrl
-      file_size = formatBytes(file.size)
-      file_format = fileExt.toUpperCase()
     }
     drive_url = null
     youtube_url = null

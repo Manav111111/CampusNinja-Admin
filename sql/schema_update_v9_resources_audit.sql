@@ -40,10 +40,10 @@ BEGIN
     END IF;
 END $$;
 
--- 5. Ensure storage bucket 'resources' exists and is set to PUBLIC
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('resources', 'resources', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
+-- 5. Ensure storage bucket 'resources' exists, is set to PUBLIC, and allows files up to 100MB
+INSERT INTO storage.buckets (id, name, public, file_size_limit) 
+VALUES ('resources', 'resources', true, 104857600)
+ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 104857600;
 
 -- 6. Storage object policies for 'resources' bucket
 DO $$ 

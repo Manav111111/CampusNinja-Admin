@@ -41,8 +41,8 @@ export default function SkillResourceForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const uploadFileWithProgress = (file: File) => {
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('File is too large. Maximum allowed size is 50MB.')
+    if (file.size > 100 * 1024 * 1024) {
+      setUploadError('File is too large. Maximum allowed size is 100MB.')
       return
     }
 
@@ -382,7 +382,7 @@ export default function SkillResourceForm({
                     <p className="mb-1 text-sm text-zinc-300">
                       <span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop
                     </p>
-                    <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX (Max 50MB)</p>
+                    <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX (Max 100MB)</p>
                   </div>
                 </label>
               )}

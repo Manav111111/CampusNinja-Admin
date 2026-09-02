@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-export const maxDuration = 60 // Allow up to 60 seconds on Vercel
+export const maxDuration = 300 // Allow up to 300 seconds for large uploads
 export const dynamic = 'force-dynamic'
 
 function formatBytes(bytes: number, decimals = 2) {
@@ -37,11 +37,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Maximum file size: 50MB
-    const maxSize = 50 * 1024 * 1024
+    // Maximum file size: 100MB
+    const maxSize = 100 * 1024 * 1024
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File is too large. Maximum allowed size is 50MB.' },
+        { error: 'File is too large. Maximum allowed size is 100MB.' },
         { status: 400 }
       )
     }
@@ -54,13 +54,19 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Ensure the 'resources' storage bucket exists (auto-create if not already created)
+    // Ensure the 'resources' storage bucket exists with 100MB limit and is updated if already existing
     const { error: bucketError } = await supabase.storage.createBucket('resources', {
       public: true,
-      fileSizeLimit: 50 * 1024 * 1024, // 50MB
+      fileSizeLimit: 100 * 1024 * 1024, // 100MB
     })
     if (bucketError && !bucketError.message.includes('already exists')) {
       console.warn('Bucket verify warning:', bucketError.message)
+    } else {
+      // Ensure existing bucket has the 100MB size limit
+      await supabase.storage.updateBucket('resources', {
+        public: true,
+        fileSizeLimit: 100 * 1024 * 1024, // 100MB
+      })
     }
 
     // Generate clean unique filename

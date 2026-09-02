@@ -96,8 +96,8 @@ export default function ResourceForm({
   const syllabusFileInputRef = useRef<HTMLInputElement>(null)
 
   const uploadFileWithProgress = (file: File) => {
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('File is too large. Maximum allowed size is 50MB.')
+    if (file.size > 100 * 1024 * 1024) {
+      setUploadError('File is too large. Maximum allowed size is 100MB.')
       return
     }
 
@@ -1030,7 +1030,7 @@ export default function ResourceForm({
                         <label htmlFor="syllabus-dropzone-file" className="flex flex-col items-center justify-center w-full min-h-[100px] border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer bg-zinc-900/50 hover:bg-zinc-800/80 transition-all p-4">
                           <div className="text-center">
                             <UploadCloud className="w-6 h-6 mb-1.5 text-indigo-400 mx-auto" />
-                            <p className="text-xs text-zinc-300 font-medium">Click to upload syllabus PDF (Max 50MB)</p>
+                            <p className="text-xs text-zinc-300 font-medium">Click to upload syllabus PDF (Max 100MB)</p>
                           </div>
                         </label>
                       )}
@@ -1234,7 +1234,7 @@ export default function ResourceForm({
                         <p className="mb-1 text-sm text-zinc-300">
                           <span className="font-semibold text-indigo-400">Click to choose file</span> or drag & drop
                         </p>
-                        <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX, JPG, PNG (Max 50MB)</p>
+                        <p className="text-xs text-zinc-500">Supports PDF, DOCX, ZIP, PPTX, JPG, PNG (Max 100MB)</p>
                       </div>
                     </label>
                   )}

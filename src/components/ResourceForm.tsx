@@ -95,7 +95,7 @@ export default function ResourceForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const syllabusFileInputRef = useRef<HTMLInputElement>(null)
 
-  const uploadFileWithProgress = (file: File) => {
+  const uploadFileWithProgress = async (file: File) => {
     if (file.size > 100 * 1024 * 1024) {
       setUploadError('File is too large. Maximum allowed size is 100MB.')
       return
@@ -111,70 +111,96 @@ export default function ResourceForm({
     setUploadError(null)
     setSelectedFile(file)
     setUploadedFileName(file.name)
+    setUploadBytesStatus(`Preparing direct upload...`)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('folder', selectedSubjectId || 'academic')
+    try {
+      // 1. Request signed direct upload URL from API (lightweight JSON request ~200B, bypasses Vercel 4.5MB limit)
+      const folder = selectedSubjectId || 'academic'
+      const initRes = await fetch('/api/upload-resource', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          folder: folder,
+        }),
+      })
 
-    const xhr = new XMLHttpRequest()
-    activeUploadXhrRef.current = xhr
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percent = Math.round((event.loaded / event.total) * 100)
-        setUploadProgress(percent)
-        const loadedMB = (event.loaded / (1024 * 1024)).toFixed(2)
-        const totalMB = (event.total / (1024 * 1024)).toFixed(2)
-        setUploadBytesStatus(`${loadedMB} MB / ${totalMB} MB (${percent}%)`)
+      if (!initRes.ok) {
+        const errData = await initRes.json().catch(() => null)
+        throw new Error(errData?.error || `Upload initialization failed (Status ${initRes.status})`)
       }
-    }
 
-    xhr.onload = () => {
-      activeUploadXhrRef.current = null
-      setIsUploading(false)
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const res = JSON.parse(xhr.responseText)
-          if (res.success && res.url) {
-            setUploadedFileUrl(res.url)
-            setUploadedFileSize(res.fileSize)
-            setUploadedFileFormat(res.fileFormat)
-            setUploadProgress(100)
-            setUploadError(null)
-          } else {
-            setUploadError(res.error || 'Upload failed.')
-            setUploadProgress(0)
+      const signData = await initRes.json()
+      if (!signData.success || !signData.signedUrl) {
+        throw new Error(signData.error || 'Failed to initialize direct storage upload.')
+      }
+
+      // 2. Direct browser upload to Supabase Storage CDN with real-time progress tracking
+      const uploadFormData = new FormData()
+      uploadFormData.append('cacheControl', '3600')
+      uploadFormData.append('', file)
+
+      const xhr = new XMLHttpRequest()
+      activeUploadXhrRef.current = xhr
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100)
+          setUploadProgress(percent)
+          const loadedMB = (event.loaded / (1024 * 1024)).toFixed(2)
+          const totalMB = (event.total / (1024 * 1024)).toFixed(2)
+          setUploadBytesStatus(`${loadedMB} MB / ${totalMB} MB (${percent}%)`)
+        }
+      }
+
+      xhr.onload = () => {
+        activeUploadXhrRef.current = null
+        setIsUploading(false)
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadedFileUrl(signData.publicUrl)
+          setUploadedFileSize(signData.fileSize)
+          setUploadedFileFormat(signData.fileFormat)
+          setUploadProgress(100)
+          setUploadError(null)
+        } else {
+          try {
+            const res = JSON.parse(xhr.responseText)
+            setUploadError(res.message || res.error || `Direct upload failed (Status ${xhr.status})`)
+          } catch {
+            setUploadError(`Direct upload failed (Status ${xhr.status})`)
           }
-        } catch {
-          setUploadError('Failed to parse server response.')
           setUploadProgress(0)
         }
-      } else {
-        try {
-          const res = JSON.parse(xhr.responseText)
-          setUploadError(res.error || `Upload failed (Status ${xhr.status})`)
-        } catch {
-          setUploadError(`Upload failed (Status ${xhr.status})`)
-        }
+      }
+
+      xhr.onerror = () => {
+        activeUploadXhrRef.current = null
+        setIsUploading(false)
+        setUploadError('Network error while uploading file. Please check connection and retry.')
         setUploadProgress(0)
       }
-    }
 
-    xhr.onerror = () => {
-      activeUploadXhrRef.current = null
+      xhr.onabort = () => {
+        activeUploadXhrRef.current = null
+        setIsUploading(false)
+        setUploadProgress(0)
+      }
+
+      const anonKey = signData.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      xhr.open('POST', signData.signedUrl)
+      if (anonKey) {
+        xhr.setRequestHeader('apikey', anonKey)
+        xhr.setRequestHeader('Authorization', `Bearer ${anonKey}`)
+      }
+      xhr.setRequestHeader('x-upsert', 'false')
+      xhr.send(uploadFormData)
+
+    } catch (err: any) {
       setIsUploading(false)
-      setUploadError('Network error while uploading. Please check connection.')
+      setUploadError(err.message || 'Failed to start upload.')
       setUploadProgress(0)
     }
-
-    xhr.onabort = () => {
-      activeUploadXhrRef.current = null
-      setIsUploading(false)
-      setUploadProgress(0)
-    }
-
-    xhr.open('POST', '/api/upload-resource')
-    xhr.send(formData)
   }
 
   const cancelUpload = () => {
